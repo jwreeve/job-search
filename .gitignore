@@ -4,3 +4,4 @@ __pycache__/
 jobs.db
 *.db
 .env
+.DS_Store
