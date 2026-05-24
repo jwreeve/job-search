@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Healthcare Job Monitor</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<header>
+  <div class="header-inner">
+    <div class="brand">
+      <h1>Healthcare Job Monitor</h1>
+      <p class="subtitle">Psychiatric &amp; Behavioral Health Positions — Connecticut</p>
+    </div>
+
+    <div class="stat-bar">
+      <div class="stat new-stat">
+        <span id="new-count" class="stat-val">—</span>
+        <span class="stat-lbl">New Jobs</span>
+      </div>
+      <div class="stat">
+        <span id="total-count" class="stat-val">—</span>
+        <span class="stat-lbl">Total Jobs</span>
+      </div>
+      <div class="stat">
+        <span id="site-count" class="stat-val">—</span>
+        <span class="stat-lbl">Sites</span>
+      </div>
+      <div class="stat">
+        <span id="last-scan" class="stat-val">—</span>
+        <span class="stat-lbl">Last Scan</span>
+      </div>
+    </div>
+
+    <div class="hdr-actions">
+      <button id="scan-btn" class="btn-primary" onclick="triggerScan()">
+        <span id="scan-spinner" class="spinner hidden"></span>
+        <span id="scan-label">&#9654; Scan Now</span>
+      </button>
+      <button class="btn-ghost" onclick="markAllSeen()">Mark All Seen</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="scan-banner" class="scan-banner hidden">
+    Scanning all sites — this takes 2–5 minutes. New results will appear automatically.
+  </div>
+
+  <div class="filter-bar">
+    <input id="q" type="search" placeholder="Search title, keyword, or site…" oninput="applyFilters()">
+    <select id="filter-site" onchange="applyFilters()">
+      <option value="">All Sites</option>
+    </select>
+    <select id="filter-kw" onchange="applyFilters()">
+      <option value="">All Keywords</option>
+    </select>
+    <label class="toggle">
+      <input type="checkbox" id="new-only" onchange="applyFilters()"> New only
+    </label>
+  </div>
+
+  <div class="tab-bar">
+    <button class="tab active" id="tab-all" onclick="switchTab('all')">All Jobs</button>
+    <button class="tab" id="tab-saved" onclick="switchTab('saved')">
+      Saved <span id="saved-tab-count" class="tab-badge">0</span>
+    </button>
+  </div>
+
+  <div id="result-count" class="result-count"></div>
+  <div id="jobs-grid" class="jobs-grid"></div>
+  <div id="empty-state" class="empty-state hidden">No jobs match your filters.</div>
+  <div id="loading" class="loading">Loading…</div>
+</main>
+
+<section class="logs-section">
+  <button class="logs-toggle" id="logs-toggle" onclick="toggleLogs()">
+    &#9660; Scan History
+  </button>
+  <div id="logs-panel" class="hidden"></div>
+</section>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
