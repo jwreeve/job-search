@@ -6,6 +6,7 @@ primary_region = "iad"
 
 [env]
   DATABASE_URL = "sqlite:////data/jobs.db"
+  INGEST_SECRET = "change-me-to-a-random-string"
 
 [http_service]
   internal_port = 8080

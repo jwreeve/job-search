@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from contextlib import asynccontextmanager
 import logging
+import os
 from typing import Optional
 
 from models import Job, ScanLog, get_db, SessionLocal
@@ -202,6 +203,42 @@ def _to_dict(j: Job) -> dict:
         "is_new": j.is_new,
         "is_saved": j.is_saved or False,
     }
+
+
+# ── Local-scraper ingest ─────────────────────────────────────────────────────
+
+@app.post("/api/ingest")
+def ingest_jobs(payload: dict, db: Session = Depends(get_db)):
+    secret = os.getenv("INGEST_SECRET")
+    if secret and payload.get("secret") != secret:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    new_count = 0
+    for log in payload.get("logs", []):
+        db.add(ScanLog(
+            source_url=log["source_url"],
+            source_name=log["source_name"],
+            jobs_found=log["jobs_found"],
+            status=log["status"],
+            error_message=log.get("error"),
+        ))
+    for jd in payload.get("jobs", []):
+        key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
+        if not db.query(Job).filter(Job.job_key == key).first():
+            db.add(Job(
+                job_key=key,
+                title=jd["title"],
+                url=jd["url"],
+                source_url=jd["source_url"],
+                source_name=jd["source_name"],
+                matched_keywords=jd["matched_keywords"],
+                is_new=True,
+            ))
+            new_count += 1
+
+    db.commit()
+    logger.info("Ingest complete — %d new job(s) added.", new_count)
+    return {"ok": True, "new_jobs": new_count}
 
 
 # ── Static frontend ──────────────────────────────────────────────────────────
