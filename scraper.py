@@ -137,28 +137,10 @@ SITES = [
         "ct_only": False,
     },
     {"url": "https://recruiting.ultipro.com/", "name": "UKG/UltiPro", "ct_only": False},
-    {
-        "url": "https://www.indeed.com/jobs?q=PMHNP+psychiatric+mental+health+nurse+practitioner&l=Connecticut",
-        "name": "Indeed",
-        "ct_only": False,
-    },
-    {
-        "url": "https://www.ziprecruiter.com/jobs-search?search=PMHNP+psychiatric+mental+health+nurse+practitioner&location=Connecticut",
-        "name": "ZipRecruiter",
-        "ct_only": False,
-    },
 ]
 
 # CSS selectors for job listing elements, tried in order
 JOB_SELECTORS = [
-    # Indeed
-    ".job_seen_beacon",
-    "[data-jk]",
-    ".resultContent",
-    # ZipRecruiter
-    ".job_content",
-    "article[class*='job']",
-    "[data-entity-id]",
     # Workday
     "[data-automation-id='jobItem']",
     "[data-automation-id='compositeJobDetail']",
