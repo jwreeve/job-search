@@ -17,7 +17,7 @@ import urllib.request
 from scraper import scrape_all_sites, SITES
 
 HOST = "https://jobs.jonathanreeve.com"
-SECRET = ""  # set INGEST_SECRET on the server and paste it here
+SECRET = "24858000338965"  # set INGEST_SECRET on the server and paste it here
 
 for arg in sys.argv[1:]:
     if arg.startswith("--url="):
