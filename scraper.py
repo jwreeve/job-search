@@ -120,7 +120,7 @@ SITES = [
         "name": "UnitedHealth Group",
         "ct_only": False,
     },
-    {"url": "https://careers.trinity-health.org/", "name": "Trinity Health", "ct_only": False},
+    {"url": "https://jobs.trinity-health.org/newengland/c/nursing-jobs", "name": "Trinity Health", "ct_only": False},
     {
         "url": "https://www.usajobs.gov/Search/Results?k=psychiatric+mental+health+nurse+practitioner&l=Connecticut",
         "name": "USAJobs (Federal)",
