@@ -178,6 +178,12 @@ async function toggleSave(id) {
   applyFilters();
 }
 
+async function clearList() {
+  if (!confirm('Clear all unsaved jobs? This cannot be undone.')) return;
+  await fetch('/api/jobs', { method: 'DELETE' });
+  await fetchJobs();
+}
+
 async function markAllSeen() {
   if (!confirm('Mark all new jobs as seen?')) return;
   await fetch('/api/jobs/mark-all-seen', { method: 'POST' });

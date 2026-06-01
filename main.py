@@ -137,6 +137,13 @@ def mark_all_seen(db: Session = Depends(get_db)):
     return {"ok": True}
 
 
+@app.delete("/api/jobs")
+def clear_jobs(db: Session = Depends(get_db)):
+    deleted = db.query(Job).filter(Job.is_saved == False).delete()
+    db.commit()
+    return {"ok": True, "deleted": deleted}
+
+
 @app.delete("/api/jobs/{job_id}")
 def delete_job(job_id: str, db: Session = Depends(get_db)):
     job = db.query(Job).filter(Job.id == job_id).first()

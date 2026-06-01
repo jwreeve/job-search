@@ -85,6 +85,18 @@ header {
 }
 .btn-ghost:hover { background: #1e293b; }
 
+.btn-danger {
+  background: transparent;
+  color: #f87171;
+  border: 1px solid #7f1d1d;
+  padding: .45rem .9rem;
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: .85rem;
+  transition: background .15s, color .15s;
+}
+.btn-danger:hover { background: #7f1d1d; color: #fff; }
+
 /* ── Scan banner ── */
 .scan-banner {
   background: #1e3a5f;
