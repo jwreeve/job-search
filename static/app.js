@@ -40,13 +40,16 @@ async function refreshStats() {
 
     if (s.scan_in_progress) {
       setScanUI(true);
+      if (!pollTimer) {
+        pollTimer = setInterval(refreshStats, 6000);
+      }
     } else {
       if (pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
-        setScanUI(false);
         await fetchJobs(); // refresh after scan finishes
       }
+      setScanUI(false);
     }
   } catch (e) { /* ignore */ }
 }
