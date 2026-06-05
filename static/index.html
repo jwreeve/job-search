@@ -47,7 +47,17 @@
 
 <main>
   <div id="scan-banner" class="scan-banner hidden">
-    Scanning all sites — this takes 2–5 minutes. New results will appear automatically.
+    <div class="scan-banner-main">
+      <span class="spinner"></span>
+      <span>Scanning — <strong id="scan-elapsed">0s</strong> elapsed</span>
+      <button id="progress-toggle" class="btn-scan-secondary" onclick="toggleProgress()">
+        <span id="progress-arrow">▼</span> Progress (<span id="progress-count">0/0</span>)
+      </button>
+      <button id="stop-btn" class="btn-scan-stop" onclick="stopScan()">&#9646; Stop &amp; Load</button>
+    </div>
+    <div id="progress-panel" class="progress-panel hidden">
+      <div id="progress-grid" class="progress-grid"></div>
+    </div>
   </div>
 
   <div class="filter-bar">

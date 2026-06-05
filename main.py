@@ -1,13 +1,15 @@
-from fastapi import FastAPI, Depends, BackgroundTasks, HTTPException
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from contextlib import asynccontextmanager
+from datetime import datetime
+import asyncio
 import logging
 import os
-from typing import Optional
+from typing import Optional, List
 
 from models import Job, ScanLog, get_db, SessionLocal
 from scraper import scrape_all_sites, SITES, make_job_key
@@ -20,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 scheduler = AsyncIOScheduler(timezone="UTC")
 _scan_running = False
+_scan_start_time: Optional[datetime] = None
+_scan_progress: List[dict] = []
+_scan_stop = False
 
 
 @asynccontextmanager
@@ -41,52 +46,83 @@ app.add_middleware(
 )
 
 
+def _commit_results(results: list) -> int:
+    if not results:
+        return 0
+    db = SessionLocal()
+    new_count = 0
+    try:
+        for site_result in results:
+            db.add(ScanLog(
+                source_url=site_result["source_url"],
+                source_name=site_result["source_name"],
+                jobs_found=len(site_result["jobs"]),
+                status=site_result["status"],
+                error_message=site_result.get("error"),
+            ))
+            for jd in site_result["jobs"]:
+                key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
+                if not db.query(Job).filter(Job.job_key == key).first():
+                    db.add(Job(
+                        job_key=key,
+                        title=jd["title"],
+                        url=jd["url"],
+                        source_url=jd["source_url"],
+                        source_name=site_result["source_name"],
+                        matched_keywords=jd["matched_keywords"],
+                        is_new=True,
+                    ))
+                    new_count += 1
+        db.commit()
+    finally:
+        db.close()
+    return new_count
+
+
 async def run_scan():
-    global _scan_running
+    global _scan_running, _scan_start_time, _scan_progress, _scan_stop
     if _scan_running:
         logger.info("Scan already running, skipping.")
         return
 
     _scan_running = True
+    _scan_stop = False
+    _scan_start_time = datetime.utcnow()
+    _accumulated: list = []
+
+    _scan_progress = [
+        {"name": s["name"], "status": "pending", "jobs_found": None, "error": None}
+        for s in SITES
+    ]
+
+    def on_start(name: str):
+        for p in _scan_progress:
+            if p["name"] == name:
+                p["status"] = "running"
+                break
+
+    def on_done(result: dict):
+        for p in _scan_progress:
+            if p["name"] == result["source_name"]:
+                p["status"] = result["status"]
+                p["jobs_found"] = len(result["jobs"])
+                p["error"] = result.get("error")
+                break
+        _accumulated.append(result)
+
     logger.info("Scan started across %d sites.", len(SITES))
-
     try:
-        results = await scrape_all_sites(SITES)
-        db = SessionLocal()
-        try:
-            new_count = 0
-            for site_result in results:
-                db.add(
-                    ScanLog(
-                        source_url=site_result["source_url"],
-                        source_name=site_result["source_name"],
-                        jobs_found=len(site_result["jobs"]),
-                        status=site_result["status"],
-                        error_message=site_result.get("error"),
-                    )
-                )
-                for jd in site_result["jobs"]:
-                    key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
-                    if not db.query(Job).filter(Job.job_key == key).first():
-                        db.add(
-                            Job(
-                                job_key=key,
-                                title=jd["title"],
-                                url=jd["url"],
-                                source_url=jd["source_url"],
-                                source_name=site_result["source_name"],
-                                matched_keywords=jd["matched_keywords"],
-                                is_new=True,
-                            )
-                        )
-                        new_count += 1
-
-            db.commit()
-            logger.info("Scan complete — %d new job(s) found.", new_count)
-        finally:
-            db.close()
+        await scrape_all_sites(
+            SITES,
+            on_site_start=on_start,
+            on_site_done=on_done,
+            stop_check=lambda: _scan_stop,
+        )
+        n = _commit_results(_accumulated)
+        logger.info("Scan complete — %d new job(s) found.", n)
     except Exception:
         logger.exception("Scan failed with an unhandled error.")
+        _commit_results(_accumulated)
     finally:
         _scan_running = False
 
@@ -155,16 +191,32 @@ def delete_job(job_id: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/scan")
-async def trigger_scan(background_tasks: BackgroundTasks):
+async def trigger_scan():
     if _scan_running:
         return {"status": "already_running", "message": "A scan is already in progress."}
-    background_tasks.add_task(run_scan)
+    asyncio.create_task(run_scan())
     return {"status": "started", "message": "Scan started in the background."}
 
 
-@app.get("/api/scan/status")
-def scan_status():
-    return {"in_progress": _scan_running}
+@app.post("/api/scan/stop")
+async def stop_scan():
+    global _scan_stop
+    if not _scan_running:
+        return {"status": "not_running"}
+    _scan_stop = True
+    return {"status": "stopping"}
+
+
+@app.get("/api/scan/progress")
+def get_scan_progress():
+    elapsed = None
+    if _scan_start_time:
+        elapsed = (datetime.utcnow() - _scan_start_time).total_seconds()
+    return {
+        "in_progress": _scan_running,
+        "elapsed_seconds": elapsed,
+        "sites": _scan_progress,
+    }
 
 
 @app.get("/api/scan/logs")

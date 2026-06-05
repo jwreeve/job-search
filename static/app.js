@@ -4,6 +4,13 @@ let allJobs = [];
 let pollTimer = null;
 let currentTab = 'all';
 
+// Elapsed timer state
+let elapsedTimer = null;
+let scanStartClientMs = null;
+let scanStartOffsetMs = 0;
+let progressOpen = false;
+let progressAutoOpened = false;
+
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
 async function init() {
@@ -43,15 +50,121 @@ async function refreshStats() {
       if (!pollTimer) {
         pollTimer = setInterval(refreshStats, 6000);
       }
+      await loadProgress();
     } else {
       if (pollTimer) {
         clearInterval(pollTimer);
         pollTimer = null;
-        await fetchJobs(); // refresh after scan finishes
+        await fetchJobs();
       }
       setScanUI(false);
     }
   } catch (e) { /* ignore */ }
+}
+
+// ── Elapsed timer ─────────────────────────────────────────────────────────────
+
+function initElapsed(serverElapsedSeconds) {
+  scanStartOffsetMs = (serverElapsedSeconds || 0) * 1000;
+  scanStartClientMs = Date.now();
+}
+
+function getElapsedSeconds() {
+  if (scanStartClientMs === null) return 0;
+  return ((Date.now() - scanStartClientMs) + scanStartOffsetMs) / 1000;
+}
+
+function updateElapsed() {
+  const s = getElapsedSeconds();
+  const mins = Math.floor(s / 60);
+  const secs = Math.round(s % 60);
+  setText('scan-elapsed', mins > 0 ? `${mins}m ${secs}s` : `${secs}s`);
+}
+
+// ── Progress panel ────────────────────────────────────────────────────────────
+
+async function loadProgress() {
+  try {
+    const data = await (await fetch('/api/scan/progress')).json();
+    if (data.in_progress && scanStartClientMs === null) {
+      initElapsed(data.elapsed_seconds || 0);
+    }
+    renderProgress(data.sites || []);
+  } catch (e) { /* ignore */ }
+}
+
+function renderProgress(sites) {
+  if (!sites.length) return;
+  const done = sites.filter(s => ['success', 'error', 'stopped'].includes(s.status)).length;
+  setText('progress-count', `${done}/${sites.length}`);
+
+  const grid = document.getElementById('progress-grid');
+  grid.innerHTML = sites.map(s => {
+    const icons = { pending: '○', running: '▸', success: '✓', error: '✕', stopped: '–' };
+    const icon = icons[s.status] || '○';
+    let detail = '';
+    if (s.status === 'success') detail = `${s.jobs_found} job${s.jobs_found !== 1 ? 's' : ''}`;
+    else if (s.status === 'error') detail = s.error ? s.error.slice(0, 50) : 'error';
+    else if (s.status === 'stopped') detail = 'stopped';
+    return `<div class="progress-site status-${s.status}">` +
+      `<span class="ps-icon">${icon}</span>` +
+      `<span class="ps-name">${esc(s.name)}</span>` +
+      `<span class="ps-detail">${esc(detail)}</span>` +
+      `</div>`;
+  }).join('');
+}
+
+function toggleProgress() {
+  progressOpen = !progressOpen;
+  document.getElementById('progress-panel').classList.toggle('hidden', !progressOpen);
+  document.getElementById('progress-arrow').textContent = progressOpen ? '▲' : '▼';
+}
+
+async function stopScan() {
+  const btn = document.getElementById('stop-btn');
+  btn.disabled = true;
+  btn.textContent = 'Stopping…';
+  await fetch('/api/scan/stop', { method: 'POST' });
+}
+
+// ── Scan UI helpers ────────────────────────────────────────────────────────────
+
+function setScanUI(scanning) {
+  const btn = document.getElementById('scan-btn');
+  const spinner = document.getElementById('scan-spinner');
+  const label = document.getElementById('scan-label');
+  const banner = document.getElementById('scan-banner');
+
+  btn.disabled = scanning;
+  spinner.classList.toggle('hidden', !scanning);
+  label.textContent = scanning ? 'Scanning…' : '▶ Scan Now';
+  banner.classList.toggle('hidden', !scanning);
+
+  if (scanning) {
+    if (!elapsedTimer) {
+      elapsedTimer = setInterval(updateElapsed, 1000);
+    }
+    if (!progressAutoOpened) {
+      progressAutoOpened = true;
+      progressOpen = true;
+      document.getElementById('progress-panel').classList.remove('hidden');
+      document.getElementById('progress-arrow').textContent = '▲';
+    }
+  } else {
+    if (elapsedTimer) {
+      clearInterval(elapsedTimer);
+      elapsedTimer = null;
+    }
+    scanStartClientMs = null;
+    progressAutoOpened = false;
+    progressOpen = false;
+    document.getElementById('progress-panel').classList.add('hidden');
+    document.getElementById('progress-arrow').textContent = '▼';
+    const stopBtn = document.getElementById('stop-btn');
+    stopBtn.disabled = false;
+    stopBtn.textContent = '⬛ Stop & Load';
+    setText('progress-count', '0/0');
+  }
 }
 
 // ── Rendering ─────────────────────────────────────────────────────────────────
@@ -202,6 +315,7 @@ async function triggerScan() {
     alert('A scan is already running.');
     return;
   }
+  initElapsed(0);
   setScanUI(true);
   pollTimer = setInterval(refreshStats, 6000);
 }
@@ -248,20 +362,6 @@ async function loadLogs() {
         `).join('')}
       </tbody>
     </table>`;
-}
-
-// ── Scan UI helpers ────────────────────────────────────────────────────────────
-
-function setScanUI(scanning) {
-  const btn = document.getElementById('scan-btn');
-  const spinner = document.getElementById('scan-spinner');
-  const label = document.getElementById('scan-label');
-  const banner = document.getElementById('scan-banner');
-
-  btn.disabled = scanning;
-  spinner.classList.toggle('hidden', !scanning);
-  label.textContent = scanning ? 'Scanning…' : '▶ Scan Now';
-  banner.classList.toggle('hidden', !scanning);
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

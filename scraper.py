@@ -180,7 +180,12 @@ JOB_SELECTORS = [
 ]
 
 
-async def scrape_all_sites(sites: List[Dict]) -> List[Dict]:
+async def scrape_all_sites(
+    sites: List[Dict],
+    on_site_start=None,
+    on_site_done=None,
+    stop_check=None,
+) -> List[Dict]:
     semaphore = asyncio.Semaphore(3)
     results = []
 
@@ -192,7 +197,23 @@ async def scrape_all_sites(sites: List[Dict]) -> List[Dict]:
 
         async def _scrape(site):
             async with semaphore:
-                return await scrape_site(browser, site)
+                if stop_check and stop_check():
+                    result = {
+                        "source_name": site["name"],
+                        "source_url": site["url"],
+                        "jobs": [],
+                        "status": "stopped",
+                        "error": None,
+                    }
+                    if on_site_done:
+                        on_site_done(result)
+                    return result
+                if on_site_start:
+                    on_site_start(site["name"])
+                result = await scrape_site(browser, site)
+                if on_site_done:
+                    on_site_done(result)
+                return result
 
         tasks = [_scrape(site) for site in sites]
         outcomes = await asyncio.gather(*tasks, return_exceptions=True)
@@ -200,15 +221,16 @@ async def scrape_all_sites(sites: List[Dict]) -> List[Dict]:
         for site, outcome in zip(sites, outcomes):
             if isinstance(outcome, Exception):
                 logger.error("Unhandled error scraping %s: %s", site["name"], outcome)
-                results.append(
-                    {
-                        "source_name": site["name"],
-                        "source_url": site["url"],
-                        "jobs": [],
-                        "status": "error",
-                        "error": str(outcome),
-                    }
-                )
+                err = {
+                    "source_name": site["name"],
+                    "source_url": site["url"],
+                    "jobs": [],
+                    "status": "error",
+                    "error": str(outcome),
+                }
+                results.append(err)
+                if on_site_done:
+                    on_site_done(err)
             else:
                 results.append(outcome)
 
