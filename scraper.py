@@ -4,6 +4,9 @@ import logging
 from typing import List, Dict, Optional
 from urllib.parse import urljoin
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
+from playwright_stealth import Stealth
+
+_stealth = Stealth()
 
 logger = logging.getLogger(__name__)
 
@@ -98,10 +101,9 @@ SITES = [
     {"url": "https://chc1.applicantpro.com/jobs/", "name": "CHC (ApplicantPro)", "ct_only": True},
     {"url": "https://www.trinityhealthofne.org/careers", "name": "Trinity Health of New England", "ct_only": True},
     {"url": "https://your.yale.edu/work-yale/careers", "name": "Yale University Careers", "ct_only": True},
-    {"url": "https://medicine.yale.edu/careers/", "name": "Yale Medicine", "ct_only": True},
     {"url": "https://www.va.gov/connecticut-health-care/work-with-us/", "name": "VA Connecticut", "ct_only": True},
     {"url": "https://bhcare.org/about-us/careers/", "name": "BHcare", "ct_only": True},
-    {"url": "https://www.fcaweb.org/what-we-do/", "name": "Family & Children's Agency", "ct_only": True},
+    {"url": "https://www.fcaweb.org/careers/", "name": "Family & Children's Agency", "ct_only": True},
     {"url": "https://www.griffinhealth.org/about/careers/", "name": "Griffin Health", "ct_only": True},
     {"url": "https://www.cgccentralct.org/careers/", "name": "CGC Central CT", "ct_only": True},
     {
@@ -110,11 +112,6 @@ SITES = [
         "ct_only": True,
     },
     # National boards — CT filtered by URL; jobs must also show CT in scraped text
-    {
-        "url": "https://www.careerbuilder.com/jobs?keywords=PMHNP+psychiatric+mental+health+nurse+practitioner&location=Connecticut",
-        "name": "CareerBuilder",
-        "ct_only": False,
-    },
     {
         "url": "https://careers.unitedhealthgroup.com/global/en/search-results?keywords=psychiatric+mental+health+Connecticut",
         "name": "UnitedHealth Group",
@@ -131,12 +128,6 @@ SITES = [
         "name": "Wellpath",
         "ct_only": False,
     },
-    {
-        "url": "https://www.optum.com/en/careers/find-a-job.html?primarySkill=PMHNP&location=Connecticut",
-        "name": "Optum",
-        "ct_only": False,
-    },
-    {"url": "https://recruiting.ultipro.com/", "name": "UKG/UltiPro", "ct_only": False},
 ]
 
 # CSS selectors for job listing elements, tried in order
@@ -210,7 +201,17 @@ async def scrape_all_sites(
                     return result
                 if on_site_start:
                     on_site_start(site["name"])
-                result = await scrape_site(browser, site)
+                try:
+                    result = await asyncio.wait_for(scrape_site(browser, site), timeout=90)
+                except asyncio.TimeoutError:
+                    result = {
+                        "source_name": site["name"],
+                        "source_url": site["url"],
+                        "jobs": [],
+                        "status": "error",
+                        "error": "Site scrape timed out after 90s",
+                    }
+                    logger.warning("Hard timeout scraping %s", site["name"])
                 if on_site_done:
                     on_site_done(result)
                 return result
@@ -249,12 +250,14 @@ async def scrape_site(browser, site: Dict) -> Dict:
         user_agent=(
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/120.0.0.0 Safari/537.36"
+            "Chrome/124.0.0.0 Safari/537.36"
         ),
         viewport={"width": 1280, "height": 900},
         locale="en-US",
+        java_script_enabled=True,
     )
     page = await context.new_page()
+    await _stealth.apply_stealth_async(page)
     page.set_default_timeout(45000)
 
     try:
@@ -398,6 +401,30 @@ async def extract_jobs(page: Page, source_url: str, ct_filter: bool = False) -> 
                     continue
         except Exception:
             pass
+
+    # Strategy 4: full rendered-page text scan — catches SPAs where selectors miss
+    if not jobs:
+        try:
+            full_text = await page.evaluate("() => document.body?.innerText || ''")
+            lines = [l.strip() for l in full_text.splitlines() if l.strip()]
+            for line in lines:
+                if len(line) > 250 or len(line) < 5:
+                    continue
+                matched = _find_matches(line)
+                if not matched:
+                    continue
+                if ct_filter and not _is_ct_location(line):
+                    continue
+                jobs.append(
+                    {
+                        "title": line[:200],
+                        "url": source_url,
+                        "source_url": source_url,
+                        "matched_keywords": ", ".join(matched),
+                    }
+                )
+        except Exception as exc:
+            logger.debug("Full-page text scan failed for %s: %s", source_url, exc)
 
     return _dedup(jobs, source_url)
 
