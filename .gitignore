@@ -5,3 +5,6 @@ jobs.db
 *.db
 .env
 .DS_Store
+keywords.csv
+scan.log
+site_urls.csv
