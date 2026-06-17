@@ -53,16 +53,13 @@ def _commit_results(results: list) -> int:
     new_count = 0
     try:
         for site_result in results:
-            db.add(ScanLog(
-                source_url=site_result["source_url"],
-                source_name=site_result["source_name"],
-                jobs_found=len(site_result["jobs"]),
-                status=site_result["status"],
-                error_message=site_result.get("error"),
-            ))
+            jobs_new = 0
+            jobs_duplicate = 0
             for jd in site_result["jobs"]:
                 key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
-                if not db.query(Job).filter(Job.job_key == key).first():
+                if db.query(Job).filter(Job.job_key == key).first():
+                    jobs_duplicate += 1
+                else:
                     db.add(Job(
                         job_key=key,
                         title=jd["title"],
@@ -72,7 +69,17 @@ def _commit_results(results: list) -> int:
                         matched_keywords=jd["matched_keywords"],
                         is_new=True,
                     ))
-                    new_count += 1
+                    jobs_new += 1
+            db.add(ScanLog(
+                source_url=site_result["source_url"],
+                source_name=site_result["source_name"],
+                jobs_found=len(site_result["jobs"]),
+                jobs_new=jobs_new,
+                jobs_duplicate=jobs_duplicate,
+                status=site_result["status"],
+                error_message=site_result.get("error"),
+            ))
+            new_count += jobs_new
         db.commit()
     finally:
         db.close()
@@ -229,6 +236,8 @@ def scan_logs(db: Session = Depends(get_db)):
             "source_name": l.source_name,
             "source_url": l.source_url,
             "jobs_found": l.jobs_found,
+            "jobs_new": l.jobs_new,
+            "jobs_duplicate": l.jobs_duplicate,
             "status": l.status,
             "error_message": l.error_message,
         }
@@ -272,28 +281,39 @@ def ingest_jobs(payload: dict, db: Session = Depends(get_db)):
     if secret and payload.get("secret") != secret:
         raise HTTPException(status_code=401, detail="Unauthorized")
 
+    jobs_by_source: dict = {}
+    for jd in payload.get("jobs", []):
+        jobs_by_source.setdefault(jd["source_url"], []).append(jd)
+
     new_count = 0
     for log in payload.get("logs", []):
+        jobs_new = 0
+        jobs_duplicate = 0
+        for jd in jobs_by_source.get(log["source_url"], []):
+            key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
+            if db.query(Job).filter(Job.job_key == key).first():
+                jobs_duplicate += 1
+            else:
+                db.add(Job(
+                    job_key=key,
+                    title=jd["title"],
+                    url=jd["url"],
+                    source_url=jd["source_url"],
+                    source_name=jd["source_name"],
+                    matched_keywords=jd["matched_keywords"],
+                    is_new=True,
+                ))
+                jobs_new += 1
         db.add(ScanLog(
             source_url=log["source_url"],
             source_name=log["source_name"],
             jobs_found=log["jobs_found"],
+            jobs_new=jobs_new,
+            jobs_duplicate=jobs_duplicate,
             status=log["status"],
             error_message=log.get("error"),
         ))
-    for jd in payload.get("jobs", []):
-        key = jd.get("job_key") or make_job_key(jd["title"], jd["source_url"])
-        if not db.query(Job).filter(Job.job_key == key).first():
-            db.add(Job(
-                job_key=key,
-                title=jd["title"],
-                url=jd["url"],
-                source_url=jd["source_url"],
-                source_name=jd["source_name"],
-                matched_keywords=jd["matched_keywords"],
-                is_new=True,
-            ))
-            new_count += 1
+        new_count += jobs_new
 
     db.commit()
     logger.info("Ingest complete — %d new job(s) added.", new_count)

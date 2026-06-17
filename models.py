@@ -41,6 +41,8 @@ class ScanLog(Base):
     source_url = Column(String)
     source_name = Column(String)
     jobs_found = Column(Integer, default=0)
+    jobs_new = Column(Integer, default=0)
+    jobs_duplicate = Column(Integer, default=0)
     status = Column(String)
     error_message = Column(Text)
 
@@ -55,5 +57,13 @@ def _migrate():
         with engine.connect() as conn:
             conn.execute(text("ALTER TABLE jobs ADD COLUMN is_saved BOOLEAN DEFAULT 0"))
             conn.commit()
+
+    existing_logs = [c["name"] for c in inspector.get_columns("scan_logs")]
+    with engine.connect() as conn:
+        if "jobs_new" not in existing_logs:
+            conn.execute(text("ALTER TABLE scan_logs ADD COLUMN jobs_new INTEGER DEFAULT 0"))
+        if "jobs_duplicate" not in existing_logs:
+            conn.execute(text("ALTER TABLE scan_logs ADD COLUMN jobs_duplicate INTEGER DEFAULT 0"))
+        conn.commit()
 
 _migrate()

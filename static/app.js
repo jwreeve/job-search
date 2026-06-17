@@ -231,7 +231,7 @@ function renderJobs(jobs) {
         </div>
       </div>
       <div class="job-right">
-        <span class="job-date">${fmtDate(j.first_seen)}</span>
+        <span class="job-date" title="First seen in a scan on ${esc(fmtDate(j.first_seen))}">First seen ${fmtDate(j.first_seen)}</span>
         <div class="job-actions">
           ${j.is_new
             ? `<button class="btn-xs" onclick="markSeen('${esc(j.id)}')">Mark Seen</button>`
@@ -346,7 +346,7 @@ async function loadLogs() {
     <table class="logs-table">
       <thead>
         <tr>
-          <th>Time</th><th>Site</th><th>Jobs Found</th><th>Status</th>
+          <th>Time</th><th>Site</th><th>Found</th><th>New</th><th>Already Tracked</th><th>Status</th>
         </tr>
       </thead>
       <tbody>
@@ -355,6 +355,8 @@ async function loadLogs() {
             <td>${fmtDate(l.scanned_at)}</td>
             <td>${esc(l.source_name || '')}</td>
             <td>${l.jobs_found}</td>
+            <td>${l.jobs_new ?? 0}</td>
+            <td${l.jobs_duplicate ? ' title="Matched a job already seen in a previous scan — not shown as new"' : ''}>${l.jobs_duplicate ?? 0}</td>
             <td class="status-${l.status}">${l.status}${
               l.error_message ? ` — ${esc(l.error_message.slice(0, 60))}` : ''
             }</td>
