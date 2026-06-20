@@ -72,7 +72,7 @@ SITES = [
         "name": "CSS Middlesex (Infor)",
         "ct_only": True,
     },
-    {"url": "https://bridgesct.org/about/employment-opportunities/", "name": "Bridges CT", "ct_only": True},
+    {"url": "https://bridgesct.applicantpro.com/jobs/", "name": "Bridges CT", "ct_only": True},
     {
         "url": "https://www.paycomonline.net/v4/ats/web.php/portal/0598C020420D-D1B3BA21EBF9977F627A/career-page",
         "name": "Community Mental Health Affiliates (Paycom)",
@@ -101,7 +101,6 @@ SITES = [
     {"url": "https://chc1.applicantpro.com/jobs/", "name": "CHC (ApplicantPro)", "ct_only": True},
     {"url": "https://www.trinityhealthofne.org/careers", "name": "Trinity Health of New England", "ct_only": True},
     {"url": "https://your.yale.edu/work-yale/careers", "name": "Yale University Careers", "ct_only": True},
-    {"url": "https://www.va.gov/connecticut-health-care/work-with-us/", "name": "VA Connecticut", "ct_only": True},
     {"url": "https://bhcare.org/about-us/careers/", "name": "BHcare", "ct_only": True},
     {"url": "https://www.fcaweb.org/careers/", "name": "Family & Children's Agency", "ct_only": True},
     {"url": "https://www.griffinhealth.org/about/careers/", "name": "Griffin Health", "ct_only": True},
@@ -113,18 +112,18 @@ SITES = [
     },
     # National boards — CT filtered by URL; jobs must also show CT in scraped text
     {
-        "url": "https://careers.unitedhealthgroup.com/global/en/search-results?keywords=psychiatric+mental+health+Connecticut",
+        "url": "https://careers.unitedhealthgroup.com/global/en/search-results",
         "name": "UnitedHealth Group",
         "ct_only": False,
     },
     {"url": "https://jobs.trinity-health.org/newengland/search-results?keyword=psychiatric+nurse+practitioner&location=Connecticut", "name": "Trinity Health", "ct_only": False},
     {
-        "url": "https://www.usajobs.gov/Search/Results?k=psychiatric+mental+health+nurse+practitioner&l=Connecticut",
+        "url": "https://www.usajobs.gov/Search/Results",
         "name": "USAJobs (Federal)",
         "ct_only": False,
     },
     {
-        "url": "https://wellpathcareers.com/search/?q=&location=Connecticut&radius=10&job_family=Advanced+Practice+Psychiatric+Providers+-+CPOM",
+        "url": "https://wellpathcareers.com/search/",
         "name": "Wellpath",
         "ct_only": False,
     },
