@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from contextlib import asynccontextmanager
 from datetime import datetime
 import asyncio
+import json
 import logging
 import os
 from typing import Optional, List
@@ -214,8 +215,7 @@ async def stop_scan():
     return {"status": "stopping"}
 
 
-@app.get("/api/scan/progress")
-def get_scan_progress():
+def _scan_progress_payload() -> dict:
     elapsed = None
     if _scan_start_time:
         elapsed = (datetime.utcnow() - _scan_start_time).total_seconds()
@@ -224,6 +224,28 @@ def get_scan_progress():
         "elapsed_seconds": elapsed,
         "sites": _scan_progress,
     }
+
+
+@app.get("/api/scan/progress")
+def get_scan_progress():
+    return _scan_progress_payload()
+
+
+@app.get("/api/scan/stream")
+async def scan_stream():
+    # Holds the connection open for the life of the scan so Fly's
+    # connection-based autostop doesn't shut the machine down mid-scan
+    # (the actual scraping runs as a detached background task, which
+    # the proxy can't otherwise see).
+    async def event_gen():
+        while True:
+            payload = _scan_progress_payload()
+            yield f"data: {json.dumps(payload)}\n\n"
+            if not payload["in_progress"]:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
 
 
 @app.get("/api/scan/logs")

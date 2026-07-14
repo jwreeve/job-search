@@ -1,7 +1,6 @@
 'use strict';
 
 let allJobs = [];
-let pollTimer = null;
 let currentTab = 'all';
 
 // Elapsed timer state
@@ -10,6 +9,7 @@ let scanStartClientMs = null;
 let scanStartOffsetMs = 0;
 let progressOpen = false;
 let progressAutoOpened = false;
+let progressStream = null;
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────
 
@@ -46,17 +46,8 @@ async function refreshStats() {
     setText('last-scan', s.last_scan ? relativeTime(s.last_scan) : 'Never');
 
     if (s.scan_in_progress) {
-      setScanUI(true);
-      if (!pollTimer) {
-        pollTimer = setInterval(refreshStats, 6000);
-      }
-      await loadProgress();
+      startProgressStream(0);
     } else {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-        await fetchJobs();
-      }
       setScanUI(false);
     }
   } catch (e) { /* ignore */ }
@@ -83,14 +74,32 @@ function updateElapsed() {
 
 // ── Progress panel ────────────────────────────────────────────────────────────
 
-async function loadProgress() {
-  try {
-    const data = await (await fetch('/api/scan/progress')).json();
-    if (data.in_progress && scanStartClientMs === null) {
-      initElapsed(data.elapsed_seconds || 0);
-    }
+function startProgressStream(initialElapsed) {
+  if (progressStream) return;
+  initElapsed(initialElapsed || 0);
+  setScanUI(true);
+  progressStream = new EventSource('/api/scan/stream');
+  progressStream.onmessage = (evt) => {
+    const data = JSON.parse(evt.data);
     renderProgress(data.sites || []);
-  } catch (e) { /* ignore */ }
+    if (!data.in_progress) {
+      stopProgressStream();
+      setScanUI(false);
+      refreshStats();
+      fetchJobs();
+    }
+  };
+  progressStream.onerror = () => {
+    stopProgressStream();
+    setScanUI(false);
+  };
+}
+
+function stopProgressStream() {
+  if (progressStream) {
+    progressStream.close();
+    progressStream = null;
+  }
 }
 
 function renderProgress(sites) {
@@ -313,11 +322,8 @@ async function triggerScan() {
   const data = await res.json();
   if (data.status === 'already_running') {
     alert('A scan is already running.');
-    return;
   }
-  initElapsed(0);
-  setScanUI(true);
-  pollTimer = setInterval(refreshStats, 6000);
+  startProgressStream(0);
 }
 
 // ── Logs ───────────────────────────────────────────────────────────────────────
