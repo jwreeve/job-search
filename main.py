@@ -3,8 +3,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from contextlib import asynccontextmanager
 from datetime import datetime
 import asyncio
 import json
@@ -21,23 +19,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-scheduler = AsyncIOScheduler(timezone="UTC")
+SCAN_SECRET = os.getenv("SCAN_SECRET")
+
 _scan_running = False
 _scan_start_time: Optional[datetime] = None
 _scan_progress: List[dict] = []
 _scan_stop = False
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    scheduler.add_job(run_scan, "interval", hours=6, id="periodic_scan", replace_existing=True)
-    scheduler.start()
-    logger.info("Healthcare Job Monitor started — auto-scan every 6 hours.")
-    yield
-    scheduler.shutdown(wait=False)
-
-
-app = FastAPI(title="Healthcare Job Monitor", lifespan=lifespan)
+app = FastAPI(title="Healthcare Job Monitor")
 
 app.add_middleware(
     CORSMiddleware,
@@ -237,6 +227,31 @@ async def scan_stream():
     # connection-based autostop doesn't shut the machine down mid-scan
     # (the actual scraping runs as a detached background task, which
     # the proxy can't otherwise see).
+    async def event_gen():
+        while True:
+            payload = _scan_progress_payload()
+            yield f"data: {json.dumps(payload)}\n\n"
+            if not payload["in_progress"]:
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@app.post("/api/scan/run")
+async def run_scan_and_wait(secret: Optional[str] = None):
+    # For the external cron trigger (see .github/workflows/scan.yml). With
+    # min_machines_running=0, there's no in-process scheduler keeping this
+    # app alive to fire scans on its own, so a cron wakes the machine over
+    # HTTP instead. Unlike /api/scan, this holds the connection open for the
+    # scan's full duration (same reasoning as /api/scan/stream) so the
+    # caller's single request is what keeps Fly from autostopping mid-scan.
+    if SCAN_SECRET and secret != SCAN_SECRET:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    if not _scan_running:
+        asyncio.create_task(run_scan())
+
     async def event_gen():
         while True:
             payload = _scan_progress_payload()

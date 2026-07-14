@@ -1,0 +1,16 @@
+name: Trigger job scan
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake app and run scan
+        run: |
+          curl -fsS -N -X POST \
+            --max-time 1200 \
+            "https://job-monitor.fly.dev/api/scan/run?secret=${{ secrets.SCAN_SECRET }}"
